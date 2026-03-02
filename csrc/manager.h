@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <tuple>
 #include <cuda_runtime.h>
 #include <optional>
 #include <nanobind/nanobind.h>
@@ -31,8 +32,15 @@ class BenchmarkManager {
 public:
     BenchmarkManager(int result_fd, ObfuscatedHexDigest signature, std::uint64_t seed, bool discard, bool nvtx, bool landlock, bool mseal);
     ~BenchmarkManager();
-    std::pair<std::vector<nb::tuple>, std::vector<nb::tuple>> setup_benchmark(const nb::callable& generate_test_case, const nb::dict& kwargs, int repeats);
-    void do_bench_py(const std::string& kernel_qualname, const std::vector<nb::tuple>& args, const std::vector<nb::tuple>& expected, cudaStream_t stream);
+    std::tuple<std::vector<nb::tuple>, std::vector<nb::tuple>, std::vector<nb::tuple>>
+    setup_benchmark(const nb::callable& generate_test_case, const nb::dict& kwargs, int repeats);
+    void do_bench_py(
+        const std::string& kernel_qualname,
+        const std::vector<nb::tuple>& args,
+        const std::vector<nb::tuple>& outputs,
+        const std::vector<nb::tuple>& expected,
+        cudaStream_t stream
+    );
 private:
     struct Expected {
         enum EMode {
@@ -76,12 +84,13 @@ private:
     bool mLandlock = true;
     bool mSeal = true;
     std::uint64_t mSeed = -1;
-    std::vector<Expected> mExpectedOutputs;
+    std::vector<std::vector<Expected>> mExpectedOutputs;
 
     FILE* mOutputPipe = nullptr;
     ObfuscatedHexDigest mSignature;
 
-    static ShadowArgumentList make_shadow_args(const nb::tuple& args, cudaStream_t stream);
+    static ShadowArgumentList make_shadow_args(const nb::tuple& args, std::size_t first_input_idx, cudaStream_t stream);
+    static Expected parse_expected_spec(const nb::handle& obj);
 
     void nvtx_push(const char* name);
     void nvtx_pop();
@@ -89,7 +98,7 @@ private:
     void validate_result(Expected& expected, const nb_cuda_array& result, unsigned seed, cudaStream_t stream);
     void clear_cache(cudaStream_t stream);
     float measure_event_overhead(int repeats, cudaStream_t stream);
-    void setup_expected_outputs(const std::vector<nb::tuple>& args, const std::vector<nb::tuple>& expected);
+    void setup_expected_outputs(const std::vector<nb::tuple>& outputs, const std::vector<nb::tuple>& expected);
 };
 
 #endif //PYGPUBENCH_SRC_MANAGER_H
